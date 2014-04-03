@@ -7,10 +7,15 @@ import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.platform.win32.Win32Exception
 
-// Get module list
+// just trigger the environment settings
 def fix = new GvmWindowsFixer()
 fix.fixEnvironment()
 
+/**
+ * When using GVM  under Cygwin, GVM only sets the Cygwin environment vars correctly.
+ * This script sets the Windows environment variables for all installed modules.
+ * Call it outside Cygwin.
+ */
 class GvmWindowsFixer
 {
     /** Root dir of Cygwin installation, Windows Style */
