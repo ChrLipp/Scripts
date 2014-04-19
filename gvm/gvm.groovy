@@ -64,6 +64,14 @@ class GvmWindowsFixer
     private String excuteCygwinCommand(String command)
     {
         def commandLine = cygwinRootDir + "\\bin\\bash.exe --login -c \"$command\""
+        excuteCommand(commandLine)
+    }
+
+    /**
+     * Executes a Process and return stdout.
+     */
+    private String excuteCommand(String commandLine)
+    {
         def proc = commandLine.execute()
         proc.waitFor()
         def result = proc.in.text.trim()
@@ -104,8 +112,8 @@ class GvmWindowsFixer
     void fixEnvironment()
     {
         // read path value
-        def pathValue = getEnvironment('PATH')
-        def pathList = pathValue.tokenize(';')
+        def origPath = getEnvironment('PATH')
+        def pathList = origPath.tokenize(';')
 
         // read modules with a default entry
         getModuleList().each { fileDir ->
@@ -129,9 +137,13 @@ class GvmWindowsFixer
         }
         
         // persist path
+        // Since Advapi32Util is not able to write REG_EXPAND_SZ strings I have to delegate this to SETX
+        // Another option would be to write full path entries instead of %EnvVar%
         def newPath = pathList.unique().join(';')
-        println "Setting PATH to '$newPath'"
-        setEnvironment('PATH', newPath)
+        if (newPath != origPath) {
+            println "Setting PATH to '$newPath'"
+            excuteCommand("SETX PATH $newPath")
+        }
         println 'Done.'
     }
     
