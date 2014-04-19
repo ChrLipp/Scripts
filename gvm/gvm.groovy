@@ -64,14 +64,6 @@ class GvmWindowsFixer
     private String excuteCygwinCommand(String command)
     {
         def commandLine = cygwinRootDir + "\\bin\\bash.exe --login -c \"$command\""
-        excuteCommand(commandLine)
-    }
-    
-    /**
-     * Executes a Process and return stdout.
-     */
-    private String excuteCommand(String commandLine)
-    {
         def proc = commandLine.execute()
         proc.waitFor()
         def result = proc.in.text.trim()
@@ -107,22 +99,71 @@ class GvmWindowsFixer
     }
     
     /**
-     * Sets a Windows Environment to all default GVM modules.
+     * Sets a Windows environment variable to all GVM modules which are set to default.
      */
     void fixEnvironment()
     {
+        // read path value
+        def pathValue = getEnvironment('PATH')
+        def pathList = pathValue.tokenize(';')
+
+        // read modules with a default entry
         getModuleList().each { fileDir ->
             def current = "$homeDir\\.gvm\\$fileDir.name\\current"
+            def envVar = "${fileDir.name.toUpperCase()}_HOME"
+            def pathPart = "%${envVar}%\\bin".toString()
+            
             if (new File(current).exists())
             {
                 def path = cygwinPathToWinPath(winPathToCygwinPath(current))
-                def envVar = "${fileDir.name.toUpperCase()}_HOME"
 
-                println "Setting $envVar to $path"
-                excuteCommand("SETX $envVar $path")
+                println "Setting $envVar to '$path'"
+                setEnvironment(envVar, path)
+                pathList << pathPart
+            }
+            else
+            {
+                pathList -= pathPart
+                removeEnvironment(envVar)   
             }
         }
         
+        // persist path
+        def newPath = pathList.unique().join(';')
+        println "Setting PATH to '$newPath'"
+        setEnvironment('PATH', newPath)
         println 'Done.'
     }
+    
+    /**
+     * Reads an user spezcific environment variable from the registry.
+     */
+    String getEnvironment(String key)
+    {
+         try {
+            return Advapi32Util.registryGetStringValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key)
+        }
+        catch (Win32Exception e) {
+            return ''
+        }
+   }
+    
+    /**
+     * Sets an user spezcific environment variable to the registry.
+     */
+    void setEnvironment(String key, String value)
+    {
+        Advapi32Util.registrySetStringValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key, value)
+    }
+    
+    /**
+     * Removes an user spezcific environment variable from the registry.
+     */
+    void removeEnvironment(String key)
+    {
+        try {
+            Advapi32Util.registryDeleteValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key)
+        }
+        catch (Win32Exception e) {}
+   }
 }
