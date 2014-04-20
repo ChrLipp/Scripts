@@ -8,8 +8,7 @@ import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.platform.win32.Win32Exception
 
 // just trigger the environment settings
-def fix = new GvmWindowsFixer()
-fix.fixEnvironment()
+new GvmWindowsFixer().fixEnvironment()
 
 /**
  * When using GVM  under Cygwin, GVM only sets the Cygwin environment vars correctly.
@@ -64,21 +63,13 @@ class GvmWindowsFixer
     private String excuteCygwinCommand(String command)
     {
         def commandLine = cygwinRootDir + "\\bin\\bash.exe --login -c \"$command\""
-        excuteCommand(commandLine)
-    }
-
-    /**
-     * Executes a Process and return stdout.
-     */
-    private String excuteCommand(String commandLine)
-    {
         def proc = commandLine.execute()
         proc.waitFor()
         def result = proc.in.text.trim()
     }
     
     /**
-     * Lists all the GVM moduls. These are the subdirectories without the gvm directories.
+     * Lists all the GVM moduls. These are the subdirectories but without the gvm specific directories.
      */
     private File[] getModuleList()
     {
@@ -121,28 +112,24 @@ class GvmWindowsFixer
             def envVar = "${fileDir.name.toUpperCase()}_HOME"
             def pathPart = "%${envVar}%\\bin".toString()
             
-            if (new File(current).exists())
-            {
+            if (new File(current).exists()) {
                 def path = cygwinPathToWinPath(winPathToCygwinPath(current))
 
                 println "Setting $envVar to '$path'"
                 setEnvironment(envVar, path)
                 pathList << pathPart
             }
-            else
-            {
+            else {
                 pathList -= pathPart
                 removeEnvironment(envVar)   
             }
         }
         
         // persist path
-        // Since Advapi32Util is not able to write REG_EXPAND_SZ strings I have to delegate this to SETX
-        // Another option would be to write full path entries instead of %EnvVar%
         def newPath = pathList.unique().join(';')
         if (newPath != origPath) {
             println "Setting PATH to '$newPath'"
-            excuteCommand("SETX PATH $newPath")
+            setEnvironment('PATH', newPath)
         }
         println 'Done.'
     }
@@ -150,7 +137,7 @@ class GvmWindowsFixer
     /**
      * Reads an user spezcific environment variable from the registry.
      */
-    String getEnvironment(String key)
+    private static String getEnvironment(String key)
     {
          try {
             return Advapi32Util.registryGetStringValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key)
@@ -163,15 +150,20 @@ class GvmWindowsFixer
     /**
      * Sets an user spezcific environment variable to the registry.
      */
-    void setEnvironment(String key, String value)
+    private static void setEnvironment(String key, String value)
     {
-        Advapi32Util.registrySetStringValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key, value)
+        if (key == 'PATH') {
+            Advapi32Util.registrySetExpandableStringValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key, value)
+        }
+        else {
+            Advapi32Util.registrySetStringValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key, value)
+        }
     }
     
     /**
      * Removes an user spezcific environment variable from the registry.
      */
-    void removeEnvironment(String key)
+    private static void removeEnvironment(String key)
     {
         try {
             Advapi32Util.registryDeleteValue(WinReg.HKEY_CURRENT_USER, 'ENVIRONMENT', key)
