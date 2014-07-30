@@ -3,9 +3,19 @@
     @Grab(group='net.java.dev.jna', module='jna-platform', version='4.1.0')
 ])
 
+import com.sun.jna.Native
 import com.sun.jna.platform.win32.Advapi32Util
+import com.sun.jna.platform.win32.User32
+import com.sun.jna.platform.win32.WinDef.DWORDByReference
+import com.sun.jna.platform.win32.WinDef.HWND
+import com.sun.jna.platform.win32.WinDef.LPARAM
+import com.sun.jna.platform.win32.WinDef.LRESULT
+import com.sun.jna.platform.win32.WinDef.UINT
+import com.sun.jna.platform.win32.WinDef.WPARAM
 import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.platform.win32.Win32Exception
+import com.sun.jna.platform.win32.WinUser
+import com.sun.jna.win32.W32APIOptions
 
 // just trigger the environment settings
 new GvmWindowsFixer().fixEnvironment()
@@ -13,16 +23,15 @@ new GvmWindowsFixer().fixEnvironment()
 /**
  * When using GVM  under Cygwin, GVM only sets the Cygwin environment vars correctly.
  * This script sets the Windows environment variables for all installed modules.
- * Call it outside Cygwin.
  */
 class GvmWindowsFixer
 {
     /** Root dir of Cygwin installation, Windows Style */
     final String cygwinRootDir
-    
+
     /** Home dir of current user, Windows Style */
     final String homeDir
-    
+
     /**
      * Ctor.
      */
@@ -39,7 +48,8 @@ class GvmWindowsFixer
     private String findCygwinRootDir()
     {
         try {
-            def cygwinRootDir = Advapi32Util.registryGetStringValue(WinReg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Cygwin\\setup', 'rootdir')
+            def cygwinRootDir = Advapi32Util.registryGetStringValue(
+                    WinReg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Cygwin\\setup', 'rootdir')
         }
         catch (Win32Exception e) {
             println 'Error: Cygwin installation not found.'
@@ -130,6 +140,7 @@ class GvmWindowsFixer
         if (newPath != origPath) {
             println "Setting PATH to '$newPath'"
             setEnvironment('PATH', newPath)
+            signalPathChange()
         }
         println 'Done.'
     }
@@ -148,7 +159,7 @@ class GvmWindowsFixer
    }
     
     /**
-     * Sets an user spezcific environment variable to the registry.
+     * Sets an user specific environment variable to the registry.
      */
     private static void setEnvironment(String key, String value)
     {
@@ -161,7 +172,7 @@ class GvmWindowsFixer
     }
     
     /**
-     * Removes an user spezcific environment variable from the registry.
+     * Removes an user specific environment variable from the registry.
      */
     private static void removeEnvironment(String key)
     {
@@ -170,4 +181,74 @@ class GvmWindowsFixer
         }
         catch (Win32Exception e) {}
    }
+   
+    /**
+     * Broadcasts the changed path so that a reboot is not necessary.
+     * However, a open console window must be closed and reopened again.
+     */
+    private static void signalPathChange()
+    {
+        MyUser32.INSTANCE.SendMessageTimeout(WinUser.HWND_BROADCAST, MyUser32.WM_SETTINGCHANGE, new WPARAM(0),
+                "Environment", MyUser32.SMTO_ABORTIFHUNG, new UINT(5000), new DWORDByReference())
+    }
+}
+
+/**
+ * Extend User32 with function SendMessageTimeout.
+ */
+interface MyUser32 extends User32
+{
+    /** The instance. */
+    MyUser32 INSTANCE = (MyUser32) Native.loadLibrary("user32", MyUser32.class, W32APIOptions.DEFAULT_OPTIONS)
+    
+    /**
+     * A message that is sent to all top-level windows when the SystemParametersInfo function changes
+     * a system-wide setting or when policy settings have changed.
+     */
+    static final UINT WM_SETTINGCHANGE = new UINT(0x001A)
+    
+    /**
+     * The function returns without waiting for the time-out period to elapse if the receiving thread appears
+     * to not respond or "hangs."
+     */
+    static final UINT SMTO_ABORTIFHUNG = new UINT(0x0002)
+
+    /**
+     * Sends the specified message to one or more windows.
+     * @param hWnd
+     *            A handle to the window whose window procedure will receive the message.
+     *            If this parameter is HWND_BROADCAST ((HWND)0xffff), the message is sent to all top-level windows
+     *            in the system, including disabled or invisible unowned windows. The function does not return until
+     *            each window has timed out. Therefore, the total wait time can be up to the value of uTimeout
+     *            multiplied by the number of top-level windows.
+     * @param Msg
+     *            The message to be sent.
+     * @param wParam
+     *            Any additional message-specific information.
+     * @param lParam
+     *            Any additional message-specific information.
+     * @param fuFlags
+     *            The behavior of this function. This parameter can be one or more of the following values.
+     *            SMTO_ABORTIFHUNG (0x0002)         The function returns without waiting for the time-out period
+     *                                              to elapse
+     *                                              if the receiving thread appears to not respond or "hangs."
+     *            SMTO_BLOCK (0x0001)               Prevents the calling thread from processing any other requests
+     *                                              until the function returns.
+     *            SMTO_NORMAL (0x0000)              The calling thread is not prevented from processing other requests
+     *                                              while waiting for the function to return.
+     *            SMTO_NOTIMEOUTIFNOTHUNG (0x0008)  The function does not enforce the time-out period as long as the
+     *                                              receiving thread is processing messages.
+     *            SMTO_ERRORONEXIT (0x0020)         The function should return 0 if the receiving window is destroyed
+     *                                              or its owning thread dies while the message is being processed.
+     * @param uTimeout
+     *            The duration of the time-out period, in milliseconds. If the message is a broadcast message, each
+     *            window can use the full time-out period. For example, if you specify a five second time-out period
+     *            and there are three top-level windows that fail to process the message, you could have up to a
+     *            15 second delay.
+     * @param lpdwResult
+     *            The result of the message processing. The value of this parameter depends on the message that is
+     *            specified.
+     */
+    LRESULT SendMessageTimeout(HWND hWnd, UINT Msg, WPARAM wParam, String lParam, UINT fuFlags,
+                               UINT uTimeout, DWORDByReference lpdwResult)
 }
