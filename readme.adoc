@@ -1,7 +1,8 @@
-A collection of scripts I use. A blog entry to explain the usage will follow.
+A collection of scripts I use.
 At the moment, the following scripts are available:
 
 - gvm.groovy fixes the Windows environment variables after running gvm in a Cygwin shell. Start the script with
 
     groovy -Djsse.enableSNIExtension=false -d https://raw.githubusercontent.com/ChrLipp/Scripts/master/gvm/gvm.groovy
 
+- exifToDir.groovy groups a directory of pictures per months (yyyyMM)
